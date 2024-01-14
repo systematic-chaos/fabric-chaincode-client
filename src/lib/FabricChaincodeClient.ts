@@ -8,7 +8,7 @@ import {Contract, FileSystemWallet, Gateway, GatewayOptions, Network, X509Wallet
 import {readFileSync} from 'fs';
 // @ts-ignore
 import * as jsrsasign from 'jsrsasign';
-import {IConfigOptions} from '../types';
+import {IConfigOptions} from '../typings/ConfigOptions';
 
 /**
  * Implementation of a client that allows the querying and invoking of chaincode directly, abstracting from the process
@@ -32,11 +32,11 @@ export class FabricChaincodeClient {
      * @param network {FabricClient | string | object} - Network configuration in the standard Hyperledger Fabric
      * format. See the docs of `fabric-client` or `fabric-network` for more information about this.
      * @param distinguishedNameAttributes {string} - Optional distinguished name attributes in string format to be used
-     * in the Certificate Signing Request. By default `,C=US,ST=North Carolina,O=Hyperledger` is used.
+     * in the Certificate Signing Request. By default `,C=SE,ST=Västerås,O=Katet-Corp` is used.
      */
     constructor(
-        private config: IConfigOptions,
-        private network: FabricClient | string | object,
+        protected config: IConfigOptions,
+        protected network: FabricClient | string | object,
         distinguishedNameAttributes?: string
     ) {
         const caServiceAuth = this.config.ca.enrollmentId + ':' + this.config.ca.enrollmentSecret;
@@ -53,7 +53,7 @@ export class FabricChaincodeClient {
         if (distinguishedNameAttributes) {
             this.distinguishedNameAttributes = distinguishedNameAttributes;
         } else {
-            this.distinguishedNameAttributes = ',C=US,ST=North Carolina,O=Hyperledger';
+            this.distinguishedNameAttributes = ',C=SE,ST=Västerås,O=Katet-Corp';
         }
     }
 
@@ -252,7 +252,7 @@ export class FabricChaincodeClient {
      *
      * @return {Promise<void>}
      */
-    private async prepareWallet(): Promise<void> {
+    protected async prepareWallet(): Promise<void> {
         const wallet = new FileSystemWallet(this.walletPath);
         const user = await this.getUser();
 
@@ -266,6 +266,32 @@ export class FabricChaincodeClient {
     }
 
     /**
+     * Connects a gateway to the Fabric network.
+     * 
+     * @param gateway {Gateway} - Gateway object to be connected to the network.
+     *                              If it is not provided, a new gateway will be instantiated.
+     * @return {Promise<Gateway>} - The gateway connected to the Fabric network.
+     */
+    protected async connectGateway(gateway?: Gateway): Promise<Gateway> {
+        if (typeof gateway === 'undefined') {
+            gateway = new Gateway();
+        }
+
+        const connectionProfile: FabricClient | string | object = this.network;
+        const connectionOptions: GatewayOptions = {
+            discovery: {
+                enabled: true,
+                asLocalhost: false
+            },
+            identity: this.config.userName,
+            wallet: new FileSystemWallet(this.walletPath)
+        };
+
+        await gateway.connect(connectionProfile, connectionOptions);
+        return gateway;
+    }
+
+    /**
      * Given a gateway, a channel and a smart contract name, returns the associated contract object.
      *
      * @param {Gateway} gateway - Gateway connection.
@@ -275,18 +301,8 @@ export class FabricChaincodeClient {
      * @return {Promise<Contract>} - The contract object.
      */
     private async getContract(gateway: Gateway, channel: string, smartContract: string): Promise<Contract> {
-        const connectionProfile: FabricClient | string | object = this.network;
-        const connectionOptions: GatewayOptions = {
-            discovery: {
-                asLocalhost: false
-            },
-            identity: this.config.userName,
-            wallet: new FileSystemWallet(this.walletPath)
-        };
-
-        await gateway.connect(connectionProfile, connectionOptions);
+        await this.connectGateway(gateway);
         const network: Network = await gateway.getNetwork(channel);
-
         return network.getContract(smartContract);
     }
 

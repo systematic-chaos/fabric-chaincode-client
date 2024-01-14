@@ -1,0 +1,19 @@
+# DO package the source code
+#src
+
+# don't package resource files
+rsc
+
+# don't package the tests
+tests
+functionalTests
+
+# don't package config files
+.vscode
+.gitignore
+.npmignore
+tsconfig.json
+tslint.json
+.editorconfig
+.nyc_output
+coverage
