@@ -1,0 +1,40 @@
+{
+  "name": "fabric-chaincode-client",
+  "version": "1.0.3",
+  "description": "Hyperledger Fabric Chaincode SDK for Node.js",
+  "main": "dist/index.js",
+  "typings": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "lint": "tslint -c tslint.json 'src/**/*.ts'",
+    "lint:fix": "tslint --fix -c tslint.json 'src/**/*.ts'",
+    "test": "nyc mocha -r ts-node/register --timeout 10000 src/**/*.spec.ts",
+    "test-retail": "nyc mocha -r ts-node/register --timeout 10000 src/tests/admin-retail-blockmarket.spec.ts",
+    "test-fsc": "nyc mocha -r ts-node/register --timeout 10000 src/tests/admin-fsc-blockmarket.spec.ts",
+    "test-ssc": "nyc mocha -r ts-node/register --timeout 10000 src/tests/admin-ssc-blockmarket.spec.ts",
+    "watch:build": "tsc --watch"
+  },
+  "dependencies": {
+    "fabric-ca-client": "^1.4.8",
+    "fabric-client": "^1.4.8",
+    "fabric-network": "^1.4.8",
+    "jsrsasign": "^8.0.15"
+  },
+  "devDependencies": {
+    "@types/chai": "^4.2.11",
+    "@types/chai-as-promised": "^7.1.2",
+    "@types/mocha": "^7.0.2",
+    "@types/node": "^13.13.5",
+    "@types/sinon": "^7.0.13",
+    "@types/sinon-chai": "^3.2.4",
+    "chai": "^4.2.0",
+    "chai-as-promised": "^7.1.1",
+    "mocha": "^7.1.2",
+    "nyc": "^15.0.1",
+    "sinon": "^7.4.1",
+    "sinon-chai": "^3.3.0",
+    "ts-node": "^8.10.1",
+    "tslint": "^6.1.2",
+    "typescript": "^3.8.3"
+  }
+}
