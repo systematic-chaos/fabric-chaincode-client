@@ -2,10 +2,10 @@
 
 import { FabricChaincodeClient } from './FabricChaincodeClient';
 
-import { ChaincodeChannelEventHandle, ChaincodeEvent, Channel, ChannelEventHub } from 'fabric-client';
+//import { ChaincodeChannelEventHandle, ChaincodeEvent, Channel, ChannelEventHub } from 'fabric-client';
 import * as FabricClient from 'fabric-client';
-import { Gateway, Network } from 'fabric-network';
-import { IConfigOptions } from '../typings/ConfigOptions';
+import { Contract, ContractListener, Gateway } from 'fabric-network';
+import { IConfigOptions } from '../typings/types';
 
 /**
  * @class FabricChaincodeEventClient - Implementation of a client that allows the querying and
@@ -17,7 +17,7 @@ import { IConfigOptions } from '../typings/ConfigOptions';
 export class FabricChaincodeEventClient extends FabricChaincodeClient {
 
     private stickyGateway: Gateway | null = null;
-    private channelEventHub: {[key: string]: { hub: ChannelEventHub, handle?: ChaincodeChannelEventHandle }} = {};
+    private eventHub: {[channel: string]: Array<{ contract: Contract, listener?: ContractListener }>} = {};
 
     constructor(
         config: IConfigOptions,
@@ -26,76 +26,56 @@ export class FabricChaincodeEventClient extends FabricChaincodeClient {
             super(config, network, distinguishedNameAttributes);
     }
 
-    public async subscribeToChaincodeEvent(channel: string, chaincodeId: string, eventName: string,
-            callback: (event: ChaincodeEvent, blockNumber?: number, txId?: string, txStatus?: string) => void) {
-        super.prepareWallet();
+    /**
+     * Subscribe to chaincode events from a contract in a channel.
+     * 
+     * @param channel
+     * @param chaincodeName
+     * @param eventName
+     * @param callback
+     */
+    public async subscribeToChaincodeEvents(channel: string, chaincodeName: string,
+            callback: ContractListener) {
+        this.prepareWallet();
 
-        if (!this.channelEventHub.hasOwnProperty(channel)) {
-            try {
-                this.channelEventHub[channel] = { 'hub': await this.connectToEventHub(channel) };
-            } catch (err) {
-                console.error(err);
-                return;
-            }
+        if (!this.eventHub.hasOwnProperty(channel)) {
+            this.eventHub[channel] = [];
         }
 
-        let ceh = this.channelEventHub[channel];
-        ceh.handle = ceh.hub.registerChaincodeEvent(chaincodeId, eventName, callback,
-            (error) => { console.error('Failed to receive the chaincode event: ' + error); },
-            { disconnect: false, unregister: false });
-    }
-
-    /**
-     * Connect to a channel's event hub.
-     * @param channel {string} - channel onto which receive blocks.
-     * @return {Promise<ChannelEventHub>} - Channel event hub, connected to the peer service.
-     *                                      If a connection cannot be established, the promise
-     *                                      will be rejected.
-     */
-    private async connectToEventHub(channel: string): Promise<ChannelEventHub> {
         if (!this.stickyGateway) {
             this.stickyGateway = await this.connectGateway();
         }
 
-        let network: Network = await this.stickyGateway.getNetwork(channel);
-        let networkChannel: Channel = network.getChannel();
-        let hubs: ChannelEventHub[] = networkChannel.getChannelEventHubsForOrg(this.config.adminIdentity);
+        let network = await this.stickyGateway.getNetwork(channel);
+        let contract = network.getContract(chaincodeName);
+        let listener = await contract.addContractListener(callback);
 
-        return new Promise<ChannelEventHub>((resolve, reject) => {
-            if (hubs.length > 0) {
-                let hub = hubs[0];
-                hub.connect({ full_block: true },
-                    (err, _) => {
-                        if (!err && hub.isconnected()) {
-                            console.log('Connected to event hub');
-                            resolve(hub);
-                        } else {
-                            reject('Failed to connect to event hub');
-                        }
-                    });
-            } else {
-                reject('No hubs were found');
-            }
-        });
+        this.eventHub[channel].push({ contract, listener });
     }
 
     /**
      * Disconnect from a channel's event hub, also unregistering any event handlers.
      * @param channel Channel onto which stop receiving blocks.
+     *                  If not provided, every channel event hub is disconnected.
      * @param removeFromChannel Whether the channel description should be completely removed
      *                          from the state of this `FabricChaincodeEventClient` object
      *                          or should be kept for later reusing.
      */
-    public disconnectEventHub(channel: string, removeFromChannel: boolean = true) {
-        if (this.channelEventHub.hasOwnProperty(channel)) {
-            let ceh = this.channelEventHub[channel];
-            if (!!ceh.handle) {
-                ceh.hub.unregisterChaincodeEvent(ceh.handle);
-            }
+    public disconnectEventHub(channel?: string, removeFromChannel: boolean = true) {
+        let channels = !!channel ? [channel] : Object.getOwnPropertyNames(this.eventHub);
+        for (let c of channels) {
+            if (c in this.eventHub) {
+                let cceh = this.eventHub[c];
 
-            ceh.hub.disconnect();
-            if (removeFromChannel) {
-                delete this.channelEventHub[channel];
+                for (let ce of cceh) {
+                    if (!!ce.listener) {
+                        ce.contract.removeContractListener(ce.listener);
+                    }
+                }
+
+                if (removeFromChannel) {
+                    delete this.eventHub[c];
+                }
             }
         }
     }
@@ -105,10 +85,9 @@ export class FabricChaincodeEventClient extends FabricChaincodeClient {
      * channels' event hubs and subsequently disconnecting the gateway.
      */
     public disconnect() {
+        this.disconnectEventHub();
+
         if (!!this.stickyGateway) {
-            for (let channel in this.channelEventHub) {
-                this.disconnectEventHub(channel);
-            }
             this.stickyGateway.disconnect();
             this.stickyGateway = null;
         }

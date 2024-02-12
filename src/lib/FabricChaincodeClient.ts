@@ -4,11 +4,13 @@ import {IEnrollResponse} from 'fabric-ca-client';
 import * as FabricCAService from 'fabric-ca-client';
 import {ICryptoKey, ICryptoSuite, TransientMap} from 'fabric-client';
 import * as FabricClient from 'fabric-client';
-import {Contract, FileSystemWallet, Gateway, GatewayOptions, Network, X509WalletMixin} from 'fabric-network';
+import {Contract, Gateway, GatewayOptions, Network} from 'fabric-network';
 import {readFileSync} from 'fs';
 // @ts-ignore
 import * as jsrsasign from 'jsrsasign';
-import {IConfigOptions} from '../typings/ConfigOptions';
+import {buildCAClient, buildIdentity} from './utils/CAUtil';
+import {createWallet, buildConnectionProfile} from './utils/ClientUtil';
+import {IConfigOptions} from '../typings/types';
 
 /**
  * Implementation of a client that allows the querying and invoking of chaincode directly, abstracting from the process
@@ -25,35 +27,32 @@ export class FabricChaincodeClient {
 
     private fabricCaClient: FabricCAService;
     private fabricClient: FabricClient;
+    protected connectionProfile: FabricClient | object;
 
     /**
      * @param config {IConfigOptions} - Specific configuration related to the user and the CA. This configuration is
      * used to enroll the user that is going to query/invoke the chaincode.
      * @param network {FabricClient | string | object} - Network configuration in the standard Hyperledger Fabric
      * format. See the docs of `fabric-client` or `fabric-network` for more information about this.
+     * Also, the path to a JSON file containing the connection profile can be provided.
      * @param distinguishedNameAttributes {string} - Optional distinguished name attributes in string format to be used
-     * in the Certificate Signing Request. By default `,C=SE,ST=Västerås,O=Katet-Corp` is used.
+     * in the Certificate Signing Request. By default `,C=ES,ST=Valencia,O=ITI` is used.
      */
     constructor(
         protected config: IConfigOptions,
-        protected network: FabricClient | string | object,
+        network: FabricClient | string | object,
         distinguishedNameAttributes?: string
     ) {
-        const caServiceAuth = this.config.ca.enrollmentId + ':' + this.config.ca.enrollmentSecret;
-        const caServiceHost = this.config.ca.host + ':' + this.config.ca.port;
-        const caServiceUrl = 'https://' + caServiceAuth + '@' + caServiceHost;
+        this.connectionProfile = typeof network === 'string' ?
+            buildConnectionProfile(network) : network;
 
         this.fabricClient = new FabricClient();
-        this.fabricCaClient = new FabricCAService(
-            caServiceUrl,
-            undefined,
-            this.config.ca.host,
-            this.fabricClient.getCryptoSuite());
+        this.fabricCaClient = buildCAClient(this.connectionProfile, this.config.ca.host);
 
         if (distinguishedNameAttributes) {
             this.distinguishedNameAttributes = distinguishedNameAttributes;
         } else {
-            this.distinguishedNameAttributes = ',C=SE,ST=Västerås,O=Katet-Corp';
+            this.distinguishedNameAttributes = ',C=ES,ST=València,O=ITI';
         }
     }
 
@@ -253,7 +252,7 @@ export class FabricChaincodeClient {
      * @return {Promise<void>}
      */
     protected async prepareWallet(): Promise<void> {
-        const wallet = new FileSystemWallet(this.walletPath);
+        const wallet = await createWallet(this.walletPath);
         const user = await this.getUser();
 
         const identityLabel = user.getName();
@@ -262,7 +261,7 @@ export class FabricChaincodeClient {
             this.cryptoSuiteStorePath + FabricChaincodeClient.getUserEnrollmentSigningIdentity(user) + '-priv'
         ).toString();
 
-        await wallet.import(identityLabel, X509WalletMixin.createIdentity(this.config.adminIdentity, cert, key));
+        await wallet.put(identityLabel, buildIdentity(cert, key, this.config.adminIdentity));
     }
 
     /**
@@ -277,17 +276,16 @@ export class FabricChaincodeClient {
             gateway = new Gateway();
         }
 
-        const connectionProfile: FabricClient | string | object = this.network;
         const connectionOptions: GatewayOptions = {
             discovery: {
                 enabled: true,
                 asLocalhost: false
             },
             identity: this.config.userName,
-            wallet: new FileSystemWallet(this.walletPath)
+            wallet: await createWallet(this.walletPath)
         };
 
-        await gateway.connect(connectionProfile, connectionOptions);
+        await gateway.connect(this.connectionProfile, connectionOptions);
         return gateway;
     }
 
