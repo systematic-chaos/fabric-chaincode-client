@@ -1,16 +1,14 @@
 'use strict';
 
-import {IEnrollResponse} from 'fabric-ca-client';
+import { Client as FabricClient, User } from 'fabric-common';
+import { Contract, Gateway, GatewayOptions, Network, TransientMap, Wallet } from 'fabric-network';
+
+import { buildCAClient, registerAndEnrollUser } from './utils/CAUtil';
+import { createWallet, buildConnectionProfile, parseResponse } from './utils/ClientUtil';
+import { IConfigOptions } from '../typings/types';
+
 import * as FabricCAService from 'fabric-ca-client';
-import {ICryptoKey, ICryptoSuite, TransientMap} from 'fabric-client';
-import * as FabricClient from 'fabric-client';
-import {Contract, Gateway, GatewayOptions, Network} from 'fabric-network';
-import {readFileSync} from 'fs';
-// @ts-ignore
-import * as jsrsasign from 'jsrsasign';
-import {buildCAClient, buildIdentity} from './utils/CAUtil';
-import {createWallet, buildConnectionProfile} from './utils/ClientUtil';
-import {IConfigOptions} from '../typings/types';
+import * as EventStrategies from 'fabric-network/lib/impl/event/defaulteventhandlerstrategies';
 
 /**
  * Implementation of a client that allows the querying and invoking of chaincode directly, abstracting from the process
@@ -20,13 +18,9 @@ import {IConfigOptions} from '../typings/types';
  * @class
  */
 export class FabricChaincodeClient {
-    private readonly cryptoSuiteStorePath: string = '/tmp/fabric-chaincode-client/hfc-key-store/';
-    private readonly distinguishedNameAttributes: string;
-    private readonly stateStorePath: string = '/tmp/fabric-chaincode-client/hfc-key-store/';
-    private readonly walletPath: string = '/tmp/fabric-chaincode-client/wallet/';
 
     private fabricCaClient: FabricCAService;
-    private fabricClient: FabricClient;
+    protected wallet: Wallet | undefined;
     protected connectionProfile: FabricClient | object;
 
     /**
@@ -35,210 +29,15 @@ export class FabricChaincodeClient {
      * @param network {FabricClient | string | object} - Network configuration in the standard Hyperledger Fabric
      * format. See the docs of `fabric-client` or `fabric-network` for more information about this.
      * Also, the path to a JSON file containing the connection profile can be provided.
-     * @param distinguishedNameAttributes {string} - Optional distinguished name attributes in string format to be used
-     * in the Certificate Signing Request. By default `,C=ES,ST=Valencia,O=ITI` is used.
      */
     constructor(
         protected config: IConfigOptions,
         network: FabricClient | string | object,
-        distinguishedNameAttributes?: string
+        private readonly walletPath: string
     ) {
         this.connectionProfile = typeof network === 'string' ?
             buildConnectionProfile(network) : network;
-
-        this.fabricClient = new FabricClient();
         this.fabricCaClient = buildCAClient(this.connectionProfile, this.config.ca.host);
-
-        if (distinguishedNameAttributes) {
-            this.distinguishedNameAttributes = distinguishedNameAttributes;
-        } else {
-            this.distinguishedNameAttributes = ',C=ES,ST=València,O=ITI';
-        }
-    }
-
-    /**
-     * Check if one given user is enrolled by checking if its cryptographic data is stored locally.
-     *
-     * @param userContext {FabricClient.User} - Context of the user that is going to be checked
-     *
-     * @return {boolean} - `true` if the user is enrolled, `false` otherwise.
-     */
-    private static isUserStoredLocally(userContext: FabricClient.User): boolean {
-        return userContext && userContext.isEnrolled();
-    }
-
-    /**
-     * Given a query/invoke response, parses it and returns 200 OK if it is empty.
-     *
-     * @param {Buffer} response - query/invoke response.
-     *
-     * @return {string} - The parsed response.
-     */
-    private static parseResponse(response: Buffer): string {
-        const parsedResponse: string = response.toString();
-
-        if (parsedResponse === '') {
-            return '200 OK';
-        }
-
-        return parsedResponse;
-    }
-
-    /**
-     * Given a user, returns its certificate.
-     *
-     * This patch is required because FabricClient.User does not has a .getCertificate() method.
-     *
-     * @param user {FabricClient.User} - The user whose certificate is going to be extracted.
-     *
-     * @return {string} - The parsed response.
-     */
-    private static getUserCertificate(user: FabricClient.User): string {
-        return JSON.parse(user.toString()).enrollment.identity.certificate;
-    }
-
-    /**
-     * Given a user, returns its signing identity.
-     *
-     * This patch is required because FabricClient.User has a .getSigningIdentity() but it returns an object which does
-     * not represent the enrollment signing identity. This should be replaced by .getEnrollment().getSigningIdentity()
-     * in case it exists in future versions.
-     *
-     * @param user {FabricClient.User} - The user whose certificate is going to be extracted.
-     *
-     * @return {string} - The parsed response.
-     */
-    private static getUserEnrollmentSigningIdentity(user: FabricClient.User): string {
-        return JSON.parse(user.toString()).enrollment.signingIdentity;
-    }
-
-    /**
-     * Creates the state store and assigns it to the fabricClient.
-     *
-     * The state store is a key value store where users certificates are kept. It iss created in the path
-     * this.stateStorePath.
-     *
-     * This operation is idempotent, so executing it multiple times in a row results in no unexpected behaviours.
-     *
-     * @return {Promise<void>}
-     */
-    private async createStateStore(): Promise<void> {
-        const stateStore = await FabricClient.newDefaultKeyValueStore({
-            path: this.stateStorePath
-        });
-
-        this.fabricClient.setStateStore(stateStore);
-    }
-
-    /**
-     * Creates the crypto suite and assigns it to the fabricClient.
-     *
-     * The crypto suite depends on the crypto store, which is a value store where users keys are kept. It is also
-     * created in the path this.cryptoSuiteStorePath.
-     *
-     * This operation is idempotent, so executing it multiple times in a row results in no unexpected behaviours.
-     *
-     * @return {Promise<void>}
-     */
-    private async createCryptoSuite(): Promise<void> {
-        const cryptoStore = FabricClient.newCryptoKeyStore({
-            path: this.cryptoSuiteStorePath
-        });
-
-        const cryptoSuite: ICryptoSuite = FabricClient.newCryptoSuite();
-        cryptoSuite.setCryptoKeyStore(cryptoStore);
-
-        this.fabricClient.setCryptoSuite(cryptoSuite);
-    }
-
-    /**
-     * Gets user context by calling the CA.
-     *
-     * User context is used to identify the user in the server, which is lately used to know if is already enrolled and
-     * has its cryptographic data stored locally.
-     *
-     * @return {Promise<FabricClient.User>} - The user context.
-     */
-    private async getUserContext(): Promise<FabricClient.User> {
-        return this.fabricClient.getUserContext(this.config.userName, true);
-    }
-
-    /**
-     * Generate a PEM-encoded PKCS#10 Certificate Signing Request using an ephemeral private key.
-     *
-     * A CSR is the message sent from client side to the CA for the digital identity certificate.
-     *
-     * @param {ICryptoKey} privateKey - Private key used to generate the CSR.
-     *
-     * @return {Promise<string>} - The PEM-encoded CSR.
-     */
-    private async generateCertificateSigningRequest(privateKey: ICryptoKey): Promise<string> {
-        const subjectDistinguishedName: string = 'CN=' + this.config.ca.enrollmentId + this.distinguishedNameAttributes;
-        const asn1 = jsrsasign.asn1;
-
-        return asn1.csr.CSRUtil.newCSRPEM({
-            sbjprvkey: privateKey.toBytes(),
-            sbjpubkey: privateKey.getPublicKey().toBytes(),
-            sigalg: 'SHA256withECDSA',
-            subject: {str: asn1.x509.X500Name.ldapToOneline(subjectDistinguishedName)},
-        });
-    }
-
-    /**
-     * Obtains user cryptographic configuration by enrolling it to the CA.
-     *
-     * This operation is idempotent, so executing it multiple times in a row results in no unexpected behaviours.
-     *
-     * @return {Promise<FabricClient.User>} - The enrolled user context.
-     */
-    private async enrollUser(): Promise<FabricClient.User> {
-        const privateKey: ICryptoKey = await this.fabricClient.getCryptoSuite().generateKey({ephemeral: true});
-        const csr: string = await this.generateCertificateSigningRequest(privateKey);
-
-        const enrollResponse: IEnrollResponse = await this.fabricCaClient.enroll({
-            csr,
-            enrollmentID: this.config.ca.enrollmentId,
-            enrollmentSecret: this.config.ca.enrollmentSecret
-        });
-
-        const user: FabricClient.User = await this.fabricClient.createUser({
-            cryptoContent: {
-                privateKeyPEM: privateKey.toBytes(),
-                signedCertPEM: enrollResponse.certificate
-            },
-            mspid: this.config.userOrg,
-            skipPersistence: false,
-            username: this.config.userName
-        });
-
-        await this.fabricClient.setUserContext(user);
-
-        return user;
-    }
-
-    /**
-     * Obtains user cryptographic configuration and returns it.
-     *
-     * The user is enrolled in case it is not stored locally.
-     *
-     * This operation is idempotent, so executing it multiple times in a row results in no unexpected behaviours.
-     *
-     * @return {Promise<FabricClient.User>} - The enrolled user context.
-     */
-    private async getUser(): Promise<FabricClient.User> {
-        await this.createStateStore();
-        await this.createCryptoSuite();
-
-        const userContext: FabricClient.User = await this.getUserContext();
-
-        let user: FabricClient.User;
-        if (FabricChaincodeClient.isUserStoredLocally(userContext)) {
-            user = userContext;
-        } else {
-            user = await this.enrollUser();
-        }
-
-        return user;
     }
 
     /**
@@ -252,16 +51,15 @@ export class FabricChaincodeClient {
      * @return {Promise<void>}
      */
     protected async prepareWallet(): Promise<void> {
-        const wallet = await createWallet(this.walletPath);
-        const user = await this.getUser();
+        this.wallet = await createWallet(this.walletPath);
 
-        const identityLabel = user.getName();
-        const cert: string = FabricChaincodeClient.getUserCertificate(user);
-        const key = readFileSync(
-            this.cryptoSuiteStorePath + FabricChaincodeClient.getUserEnrollmentSigningIdentity(user) + '-priv'
-        ).toString();
-
-        await wallet.put(identityLabel, buildIdentity(cert, key, this.config.adminIdentity));
+        const user = await this.getUserContext(this.wallet);
+        if (!user || !user.isEnrolled()) {
+            registerAndEnrollUser(this.fabricCaClient, this.wallet, this.config.userOrg,
+                this.config.userName, this.config.adminIdentity, this.config.affiliation);
+        } else {
+            console.log(`User ${this.config.userName} is already registered and enrolled`);
+        }
     }
 
     /**
@@ -269,24 +67,51 @@ export class FabricChaincodeClient {
      * 
      * @param gateway {Gateway} - Gateway object to be connected to the network.
      *                              If it is not provided, a new gateway will be instantiated.
+     * @param waitForCommit {boolean} - Whenever a transaction is submitted, whether wait for
+     *                              a confirmation event from the peer before returning
+     *                              (synchronous/asynchronous commit).
      * @return {Promise<Gateway>} - The gateway connected to the Fabric network.
      */
-    protected async connectGateway(gateway?: Gateway): Promise<Gateway> {
+    protected async connectGateway(gateway?: Gateway, waitForCommit: boolean = true): Promise<Gateway> {
         if (typeof gateway === 'undefined') {
             gateway = new Gateway();
         }
 
-        const connectionOptions: GatewayOptions = {
+        const gatewayConnectionOptions: GatewayOptions = {
+            wallet: this.wallet,
+            identity: this.config.userName,
             discovery: {
                 enabled: true,
-                asLocalhost: false
-            },
-            identity: this.config.userName,
-            wallet: await createWallet(this.walletPath)
+                //asLocalhost: false
+                asLocalhost: true   // using asLocalhost as this gateway is using a Fabric network deployed locally
+            }
         };
+        if (!waitForCommit) {
+            gatewayConnectionOptions['eventHandlerOptions'] = { strategy: EventStrategies.NONE };
+        }
 
-        await gateway.connect(this.connectionProfile, connectionOptions);
+        await gateway.connect(this.connectionProfile, gatewayConnectionOptions);
         return gateway;
+    }
+
+    /**
+     * Gets user context by calling the wallet.
+     *
+     * User context is used to identify the user in the server, which is lately used to know if is already enrolled and
+     * has its cryptographic data stored locally.
+     *
+     * @param {Wallet} wallet
+     * @return {Promise<User>} - The user context.
+     */
+    private async getUserContext(wallet: Wallet): Promise<User|null> {
+        let user = null;
+        const userIdentity = await wallet.get(this.config.userName);
+
+        if (userIdentity) {
+            const provider = wallet.getProviderRegistry().getProvider(userIdentity.type);
+            user = await provider.getUserContext(userIdentity, this.config.userName);
+        }
+        return user;
     }
 
     /**
@@ -324,7 +149,7 @@ export class FabricChaincodeClient {
             const contract: Contract = await this.getContract(gateway, channel, smartContract);
             const response: Buffer = (await contract.evaluateTransaction(transaction, ...args));
 
-            return FabricChaincodeClient.parseResponse(response);
+            return parseResponse(response);
         } finally {
             gateway.disconnect();
         }
@@ -354,7 +179,7 @@ export class FabricChaincodeClient {
             const response: Buffer = await contract.createTransaction(transaction)
                 .setTransient(privateData).submit(...args);
 
-            return FabricChaincodeClient.parseResponse(response);
+            return parseResponse(response);
         } finally {
             gateway.disconnect();
         }
@@ -380,7 +205,7 @@ export class FabricChaincodeClient {
             const contract: Contract = await this.getContract(gateway, channel, smartContract);
             const response: Buffer = await contract.submitTransaction(transaction, ...args);
 
-            return FabricChaincodeClient.parseResponse(response);
+            return parseResponse(response);
         } finally {
             gateway.disconnect();
         }
@@ -400,7 +225,10 @@ export class FabricChaincodeClient {
      */
     public async query(channel: string, smartContract: string, transaction: string,
                        ...args: string[]): Promise<string> {
-        await this.prepareWallet();
+        if (!this.wallet) {
+            await this.prepareWallet();
+        }
+
         return await this.queryInternal(channel, smartContract, transaction, ...args);
     }
 
@@ -419,7 +247,10 @@ export class FabricChaincodeClient {
      */
     public async querySecret(channel: string, smartContract: string, transaction: string, privateData: TransientMap,
                              ...args: string[]): Promise<string> {
-        await this.prepareWallet();
+        if (!this.wallet) {
+            await this.prepareWallet();
+        }
+
         return await this.querySecretInternal(channel, smartContract, transaction, privateData, ...args);
     }
 
@@ -437,7 +268,10 @@ export class FabricChaincodeClient {
      */
     public async invoke(channel: string, smartContract: string, transaction: string,
                         ...args: string[]): Promise<string> {
-        await this.prepareWallet();
+        if (!this.wallet) {
+            await this.prepareWallet();
+        }
+
         return await this.invokeInternal(channel, smartContract, transaction, ...args);
     }
 }
