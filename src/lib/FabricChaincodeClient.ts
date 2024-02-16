@@ -55,8 +55,7 @@ export class FabricChaincodeClient {
 
         const user = await this.getUserContext(this.wallet);
         if (!user || !user.isEnrolled()) {
-            registerAndEnrollUser(this.fabricCaClient, this.wallet, this.config.userOrg,
-                this.config.userName, this.config.adminIdentity, this.config.affiliation);
+            registerAndEnrollUser(this.fabricCaClient, this.wallet, this.config);
         } else {
             console.log(`User ${this.config.userName} is already registered and enrolled`);
         }
