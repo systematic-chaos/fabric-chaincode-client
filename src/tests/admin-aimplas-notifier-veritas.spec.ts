@@ -1,5 +1,7 @@
 import { FabricChaincodeClient } from '..';
 
+import { resolve as resolvePath } from 'path';
+
 import { expect } from 'chai';
 import 'mocha';
 
@@ -176,7 +178,8 @@ const networkConfig = {
 
 describe('without custom distinguished name attributes', () => {
 
-    const fabricChaincodeClient = new FabricChaincodeClient(clientConfig, networkConfig);
+    const fabricChaincodeClient = new FabricChaincodeClient(
+        clientConfig, networkConfig, resolvePath(process.cwd(), 'wallet'));
 
     describe('query', () => {
 

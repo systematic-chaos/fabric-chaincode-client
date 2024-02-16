@@ -1,5 +1,7 @@
 import { FabricChaincodeClient } from '..';
 
+import { resolve as resolvePath } from 'path';
+
 import * as chai from 'chai';
 import * as chaiAsPromised from 'chai-as-promised';
 import 'mocha';
@@ -84,7 +86,8 @@ const baseTransaction = {
 
 describe('Retail without custom distinguished name attributes', () => {
 
-    const fabricChaincodeClient = new FabricChaincodeClient(clientConfig, networkConfig);
+    const fabricChaincodeClient = new FabricChaincodeClient(
+        clientConfig, networkConfig, resolvePath(process.cwd(), 'wallet'));
 
     describe('*** FSC ****************', () => {
 

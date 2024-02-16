@@ -7,7 +7,9 @@ interface IConfigOptions {
         port: string,
         enrollmentId: string,
         enrollmentSecret: string
-    };
+    },
+    affiliation?: string,
+    roles?: string[]
 }
 
 interface IX509Identity {
