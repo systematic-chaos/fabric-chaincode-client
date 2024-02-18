@@ -1,4 +1,4 @@
-interface IConfigOptions {
+interface ConfigOptions {
     userName: string;
     userOrg: string;
     adminIdentity: string;
@@ -12,7 +12,53 @@ interface IConfigOptions {
     roles?: string[]
 }
 
-interface IX509Identity {
+interface NetworkConnectionProfile {
+    name: string,
+    version: string,
+    client: {
+        organization: string,
+        connection: {
+            timeout: {
+                peer: {
+                    endorser: string | number
+                }
+            }
+        }
+    },
+    organizations: {
+        [key: string]: {
+            mspid: string,
+            peers: string[],
+            certificateAuthorities: string[]
+        }
+    }
+    peers: {
+        [key: string]: {
+            url: string,
+            tlsCACerts: {
+                pem: string
+            },
+            grpcOptions: {
+                "ssl-target-name-override": string,
+                "hostnameOverride": string
+            }
+        }
+    },
+    certificateAuthorities: {
+        [key: string]: {
+            url: string,
+            caName: string,
+            tlsCACerts: {
+                pem: string[]
+            },
+            httpOptions: {
+                verify: boolean
+            }
+        }
+    }
+}
+
+interface X509Identity {
     credentials: {
         certificate: string,
         privateKey: string
@@ -22,6 +68,7 @@ interface IX509Identity {
 };
 
 export {
-    IConfigOptions,
-    IX509Identity
+    ConfigOptions,
+    NetworkConnectionProfile,
+    X509Identity
 };

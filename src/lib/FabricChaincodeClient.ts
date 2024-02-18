@@ -5,7 +5,7 @@ import { Contract, Gateway, GatewayOptions, Network, TransientMap, Wallet } from
 
 import { buildCAClient, registerAndEnrollUser } from './utils/CAUtil';
 import { createWallet, buildConnectionProfile, parseResponse } from './utils/ClientUtil';
-import { IConfigOptions } from '../typings/types';
+import { ConfigOptions } from '../typings/types';
 
 import * as FabricCAService from 'fabric-ca-client';
 import * as EventStrategies from 'fabric-network/lib/impl/event/defaulteventhandlerstrategies';
@@ -31,7 +31,7 @@ export class FabricChaincodeClient {
      * Also, the path to a JSON file containing the connection profile can be provided.
      */
     constructor(
-        protected config: IConfigOptions,
+        protected config: ConfigOptions,
         network: FabricClient | string | object,
         private readonly walletPath: string
     ) {

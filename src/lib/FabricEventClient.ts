@@ -4,7 +4,7 @@ import { Client as FabricClient } from 'fabric-common';
 import { BlockListener, Contract, ContractListener, Gateway } from 'fabric-network';
 
 import { FabricChaincodeClient } from './FabricChaincodeClient';
-import { IConfigOptions } from '../typings/types';
+import { ConfigOptions } from '../typings/types';
 
 /**
  * @class
@@ -22,7 +22,7 @@ export class FabricEventClient extends FabricChaincodeClient {
     private blockEventHub: {[channel: string]: Array<BlockListener>} = {};
 
     constructor(
-        config: IConfigOptions,
+        config: ConfigOptions,
         network: FabricClient | string | object,
         walletPath: string) {
             super(config, network, walletPath);
@@ -128,8 +128,8 @@ export class FabricEventClient extends FabricChaincodeClient {
      * Disconnect the client from the network, unregistering any event handlers from the
      * channels' event hubs and subsequently disconnecting the gateway.
      */
-    public disconnect() {
-        this.disconnectEventHub();
+    public async disconnect() {
+        await this.disconnectEventHub();
 
         if (!!this.stickyGateway) {
             this.stickyGateway.disconnect();

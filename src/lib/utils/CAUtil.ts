@@ -1,6 +1,6 @@
 import { ICryptoKey } from 'fabric-common';
 import { Wallet } from 'fabric-network';
-import { IConfigOptions, IX509Identity } from '../../typings/types'
+import { ConfigOptions, X509Identity } from '../../typings/types'
 import * as FabricCAServices from 'fabric-ca-client';
 
 /**
@@ -25,7 +25,7 @@ const buildCAClient = (ccp: Record<string, any>, caHostName: string): FabricCASe
  * In a production-ready application, this would be done on an administrative flow, and only once.
  */
 const enrollAdmin = async (caClient: FabricCAServices, wallet: Wallet,
-        confOpts: IConfigOptions, adminUserPasswd: string): Promise<void> => {
+        confOpts: ConfigOptions, adminUserPasswd: string): Promise<void> => {
     try {
         // Check to see if we've already enrolled the admin user
         const identity = await wallet.get(confOpts.adminIdentity);
@@ -53,7 +53,7 @@ const enrollAdmin = async (caClient: FabricCAServices, wallet: Wallet,
  * was required to be added, and would be part of an administrative flow.
  */
 const registerAndEnrollUser = async (caClient: FabricCAServices, wallet: Wallet,
-    confOpts: IConfigOptions): Promise<void> => {
+    confOpts: ConfigOptions): Promise<void> => {
     if (!confOpts.affiliation) {
         confOpts.affiliation = caClient.getCaName();
     }
@@ -112,7 +112,7 @@ const registerAndEnrollUser = async (caClient: FabricCAServices, wallet: Wallet,
     }
 };
 
-const buildIdentity = (cert: string, pemKey: ICryptoKey | string, mspID: string): IX509Identity => {
+const buildIdentity = (cert: string, pemKey: ICryptoKey | string, mspID: string): X509Identity => {
     return {
         credentials: {
             certificate: cert,
