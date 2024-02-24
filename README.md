@@ -206,10 +206,10 @@ E0422 09:09:18.420249909   22649 ssl_transport_security.cc:1245] Handshake faile
 ## Compatibility
 
 The following tables show versions of Fabric, Node and other dependencies that are explicitly tested and that are 
-supported for use with version 1.4 of the Hyperledger Fabric Chaincode SDK for Node.js
+supported for use with version 2.x of the Hyperledger Fabric Chaincode SDK for Node.js
 
-|              | Tested       | Supported      |
-|--------------|--------------|----------------|
-| **Fabric**   | 2.0          | 2.0.x, 2.2.x   |
-| **Node**     | 12.22        | 10.13+, 12.13+ |
-| **Platform** | Ubuntu 20.04 |                |
+|              | Tested       | Supported            |
+|--------------|--------------|----------------------|
+| **Fabric**   | 2.0          | 2.0.x, 2.2.x         |
+| **Node**     | 14.21        | 14.21+, ^16.x, ^18.x |
+| **Platform** | Ubuntu 20.04 | Ubuntu 20.04, 22.04  |

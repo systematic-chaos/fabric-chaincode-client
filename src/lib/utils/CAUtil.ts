@@ -1,7 +1,7 @@
 import { ICryptoKey } from 'fabric-common';
 import { Wallet } from 'fabric-network';
 import { ConfigOptions, X509Identity } from '../../typings/types'
-import * as FabricCAServices from 'fabric-ca-client';
+import FabricCAServices from 'fabric-ca-client';
 
 /**
  * Create a new CA client for interacting with the CA.

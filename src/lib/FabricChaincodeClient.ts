@@ -21,7 +21,7 @@ export class FabricChaincodeClient {
 
     private fabricCaClient: FabricCAService;
     protected wallet: Wallet | undefined;
-    protected connectionProfile: FabricClient | object;
+    protected connectionProfile: FabricClient | Record<string, unknown>;
 
     /**
      * @param config {IConfigOptions} - Specific configuration related to the user and the CA. This configuration is
@@ -33,10 +33,9 @@ export class FabricChaincodeClient {
     constructor(
         protected config: ConfigOptions,
         network: FabricClient | string | object,
-        private readonly walletPath: string
-    ) {
+        private readonly walletPath: string) {
         this.connectionProfile = typeof network === 'string' ?
-            buildConnectionProfile(network) : network;
+            buildConnectionProfile(network) : network as FabricClient;
         this.fabricCaClient = buildCAClient(this.connectionProfile, this.config.ca.host);
     }
 

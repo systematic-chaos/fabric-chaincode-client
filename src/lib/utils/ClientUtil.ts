@@ -9,7 +9,7 @@ import * as fs from 'fs';
  * @param ccpPath Connection configuration file path
  * @returns Object containing the connection profile
  */
-const buildConnectionProfile = (ccpPath: string): Record<string, any> => {
+const buildConnectionProfile = (ccpPath: string): Record<string, unknown> => {
     // Load the connection configuration file
     const fileExists = fs.existsSync(ccpPath);
     if (!fileExists) {

@@ -4,6 +4,7 @@
     "target": "es2020",
     "declaration": true,
     "outDir": "./dist",
+    "esModuleInterop": true,
     "resolveJsonModule": true,
     "removeComments": true,
     "noImplicitAny": true,

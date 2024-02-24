@@ -2,8 +2,8 @@ import { FabricChaincodeClient } from '..';
 
 import { resolve as resolvePath } from 'path';
 
-import * as chai from 'chai';
-import * as chaiAsPromised from 'chai-as-promised';
+import chai from 'chai';
+import chaiAsPromised from 'chai-as-promised';
 import 'mocha';
 
 chai.should();

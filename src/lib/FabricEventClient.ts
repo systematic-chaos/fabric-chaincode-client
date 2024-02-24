@@ -1,7 +1,7 @@
 'use strict';
 
 import { Client as FabricClient } from 'fabric-common';
-import { BlockListener, Contract, ContractListener, Gateway } from 'fabric-network';
+import { BlockListener, ContractListener, Gateway, ListenerOptions } from 'fabric-network';
 
 import { FabricChaincodeClient } from './FabricChaincodeClient';
 import { ConfigOptions } from '../typings/types';
@@ -18,8 +18,8 @@ import { ConfigOptions } from '../typings/types';
 export class FabricEventClient extends FabricChaincodeClient {
 
     private stickyGateway: Gateway | null = null;
-    private ccEventHub: {[channel: string]: Array<{ contract: Contract, listener?: ContractListener }>} = {};
-    private blockEventHub: {[channel: string]: Array<BlockListener>} = {};
+    private ccEventHub: {[key/*channel*/: string]: {[key/*contract*/: string]: Array<ContractListener>}} = {};
+    private blockEventHub: {[key/*channel*/: string]: Array<BlockListener>} = {};
 
     constructor(
         config: ConfigOptions,
@@ -35,36 +35,79 @@ export class FabricEventClient extends FabricChaincodeClient {
      * @param chaincodeName
      * @param eventName
      * @param callback
+     * @param startBlock
      */
     public async subscribeToChaincodeEvents(channel: string, chaincodeName: string,
-            callback: ContractListener) {
+            callback: ContractListener, startBlock?: number): Promise<void> {
         if (!this.wallet) {
             await this.prepareWallet();
         }
 
         if (!this.ccEventHub.hasOwnProperty(channel)) {
-            this.ccEventHub[channel] = [];
+            this.ccEventHub[channel] = {};
+        }
+        if (!this.ccEventHub[channel].hasOwnProperty(chaincodeName)) {
+            this.ccEventHub[channel][chaincodeName] = [];
         }
 
         if (!this.stickyGateway) {
             this.stickyGateway = await this.connectGateway(undefined, false);
         }
 
+        let listenerOptions: ListenerOptions = {
+            type: EventType.FULL
+        };
+        if (startBlock) {
+            listenerOptions.startBlock = startBlock;
+        }
+
         let network = await this.stickyGateway.getNetwork(channel);
         let contract = network.getContract(chaincodeName);
-        let listener = await contract.addContractListener(callback);
+        await contract.addContractListener(callback, listenerOptions);
 
-        this.ccEventHub[channel].push({ contract, listener });
+        this.ccEventHub[channel][chaincodeName].push(callback);
+    }
+
+    /**
+     * Makes all contract event listeners installed for the channel and chaincode specified
+     * to start replaying events starting on the block identified by startBlock.
+     * This method actually removes the existing contract event listeners installed on the
+     * contract (in the channel's context) and reinstalls them by setting the startBlock option.
+     * BlockListener instances are preserved, since they are just callback functions.
+     *
+     * @param channel
+     * @param chaincodeName
+     * @param startBlock
+     */
+    public async replayChaincodeEvents(channel: string, chaincodeName: string,
+            startBlock: number): Promise<void> {
+        if (!!this.stickyGateway
+                && channel in this.ccEventHub && chaincodeName in this.ccEventHub[channel]) {
+            let network = await this.stickyGateway.getNetwork(channel);
+            let contract = network.getContract(chaincodeName);
+
+            let listenerOptions: ListenerOptions = {
+                startBlock: startBlock,
+                type: EventType.FULL
+            };
+            
+            this.ccEventHub[channel][chaincodeName].forEach((ccl) => {
+                contract.removeContractListener(ccl);
+                contract.addContractListener(ccl, listenerOptions);
+            });
+        }
     }
 
     /**
      * Subscribe to block events from a channel.
      * 
-     * @param channel 
-     * @param callback 
+     * @param channel
+     * @param callback
+     * @param startBlock
+     * @param privateEvents
      */
     public async subscribeToBlockEvents(channel: string, callback: BlockListener,
-            privateEvents: boolean = false) {
+            startBlock?: number, privateEvents: boolean = false): Promise<void> {
         if (!this.wallet) {
             await this.prepareWallet();
         }
@@ -77,11 +120,45 @@ export class FabricEventClient extends FabricChaincodeClient {
             this.stickyGateway = await this.connectGateway(undefined, false);
         }
 
-        let network = await this.stickyGateway.getNetwork(channel);
-        let listener = await network.addBlockListener(callback,
-            { type: privateEvents ? 'private' : 'full' });
+        let listenerOptions: ListenerOptions = {
+            type: privateEvents ? EventType.PRIVATE : EventType.FULL
+        };
+        if (startBlock) {
+            listenerOptions.startBlock = startBlock;
+        }
 
-        this.blockEventHub[channel].push(listener);
+        let network = await this.stickyGateway.getNetwork(channel);
+        await network.addBlockListener(callback, listenerOptions);
+
+        this.blockEventHub[channel].push(callback);
+    }
+
+    /**
+     * Makes all block event listeners installed for the channel specified
+     * to start replaying events starting on the block identified by startBlock.
+     * This method actually removes the existing block event listeners installed
+     * on the channel and reinstalls them by setting the startBlock option.
+     * BlockListener instances are preserved, since they are just callback functions.
+     *
+     * @param channel
+     * @param startBlock
+     * @param privateEvents
+     */
+    public async replayBlockEvents(channel: string,
+            startBlock: number, privateEvents: boolean = false): Promise<void> {
+        if (!!this.stickyGateway && channel in this.blockEventHub) {
+            let network = await this.stickyGateway.getNetwork(channel);
+            
+            let listenerOptions: ListenerOptions = {
+                startBlock: startBlock,
+                type: privateEvents ? EventType.PRIVATE : EventType.FULL
+            };
+
+            this.blockEventHub[channel].forEach(async (bl) => {
+                network.removeBlockListener(bl);
+                await network.addBlockListener(bl, listenerOptions);
+            });
+        }
     }
 
     /**
@@ -92,15 +169,19 @@ export class FabricEventClient extends FabricChaincodeClient {
      *                          from the state of this `FabricChaincodeEventClient` object
      *                          or should be kept for later reusing.
      */
-    private async disconnectEventHub(channel?: string, removeFromChannel: boolean = true) {
+    private async disconnectEventHub(channel?: string, removeFromChannel: boolean = true): Promise<void> {
+        if (!this.stickyGateway) {
+            return;
+        }
+
         let channels = !!channel ? [channel] : Object.getOwnPropertyNames(this.ccEventHub);
         for (let c of channels) {
+            let network = await this.stickyGateway.getNetwork(c);
             if (c in this.ccEventHub) {
-                let cceh = this.ccEventHub[c];
-                
-                for (let ce of cceh) {
-                    if (!!ce.listener) {
-                        ce.contract.removeContractListener(ce.listener);
+                for (let cc in this.ccEventHub[c]) {
+                    let contract = network.getContract(cc);
+                    for (let ccl of this.ccEventHub[c][cc]) {
+                        contract.removeContractListener(ccl);
                     }
                 }
                 
@@ -110,7 +191,6 @@ export class FabricEventClient extends FabricChaincodeClient {
             }
             
             if (c in this.blockEventHub && !!this.stickyGateway) {
-                let network = await this.stickyGateway.getNetwork(c);
                 let beh = this.blockEventHub[c];
 
                 for (let be of beh) {
@@ -136,4 +216,10 @@ export class FabricEventClient extends FabricChaincodeClient {
             this.stickyGateway = null;
         }
     }
+}
+
+enum EventType {
+    FILTERED = 'filtered',
+    FULL = 'full',
+    PRIVATE = 'private'
 }
