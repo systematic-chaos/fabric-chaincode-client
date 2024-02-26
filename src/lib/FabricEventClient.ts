@@ -51,7 +51,7 @@ export class FabricEventClient extends FabricChaincodeClient {
         }
 
         if (!this.stickyGateway) {
-            this.stickyGateway = await this.connectGateway(undefined, false);
+            this.stickyGateway = await this.connectGateway(this.stickyGateway, false);
         }
 
         let listenerOptions: ListenerOptions = {
@@ -117,7 +117,7 @@ export class FabricEventClient extends FabricChaincodeClient {
         }
 
         if (!this.stickyGateway) {
-            this.stickyGateway = await this.connectGateway(undefined, false);
+            this.stickyGateway = await this.connectGateway(this.stickyGateway, false);
         }
 
         let listenerOptions: ListenerOptions = {

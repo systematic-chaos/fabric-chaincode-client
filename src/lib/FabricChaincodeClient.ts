@@ -47,7 +47,7 @@ export class FabricChaincodeClient {
      *
      * This operation is idempotent, so executing it multiple times in a row results in no unexpected behaviours.
      *
-     * @return {Promise<void>}
+     * @returns {Promise<void>}
      */
     protected async prepareWallet(): Promise<void> {
         this.wallet = await createWallet(this.walletPath);
@@ -68,10 +68,10 @@ export class FabricChaincodeClient {
      * @param waitForCommit {boolean} - Whenever a transaction is submitted, whether wait for
      *                              a confirmation event from the peer before returning
      *                              (synchronous/asynchronous commit).
-     * @return {Promise<Gateway>} - The gateway connected to the Fabric network.
+     * @returns {Promise<Gateway>} - The gateway connected to the Fabric network.
      */
-    protected async connectGateway(gateway?: Gateway, waitForCommit: boolean = true): Promise<Gateway> {
-        if (typeof gateway === 'undefined') {
+    protected async connectGateway(gateway: Gateway|null, waitForCommit: boolean): Promise<Gateway> {
+        if (gateway == null) {
             gateway = new Gateway();
         }
 
@@ -85,7 +85,7 @@ export class FabricChaincodeClient {
             }
         };
         if (!waitForCommit) {
-            gatewayConnectionOptions['eventHandlerOptions'] = { strategy: EventStrategies.NONE };
+            gatewayConnectionOptions.eventHandlerOptions = { strategy: EventStrategies.NONE };
         }
 
         await gateway.connect(this.connectionProfile, gatewayConnectionOptions);
@@ -99,7 +99,7 @@ export class FabricChaincodeClient {
      * has its cryptographic data stored locally.
      *
      * @param {Wallet} wallet
-     * @return {Promise<User>} - The user context.
+     * @returns {Promise<User>} - The user context.
      */
     private async getUserContext(wallet: Wallet): Promise<User|null> {
         let user = null;
@@ -118,11 +118,13 @@ export class FabricChaincodeClient {
      * @param {Gateway} gateway - Gateway connection.
      * @param {string} channel - Name to identify the channel.
      * @param {string} smartContract - Smart contract name.
+     * @param {boolean} waitForCommit - Synchronous/asynchronous commit.
      *
-     * @return {Promise<Contract>} - The contract object.
+     * @returns {Promise<Contract>} - The contract object.
      */
-    private async getContract(gateway: Gateway, channel: string, smartContract: string): Promise<Contract> {
-        await this.connectGateway(gateway);
+    private async getContract(gateway: Gateway, channel: string, smartContract: string,
+            waitForCommit = true): Promise<Contract> {
+        await this.connectGateway(gateway, waitForCommit);
         const network: Network = await gateway.getNetwork(channel);
         return network.getContract(smartContract);
     }
@@ -134,18 +136,18 @@ export class FabricChaincodeClient {
      *
      * @param {string} channel - Name to identify the channel.
      * @param {string} smartContract - Smart contract name.
-     * @param {string} transaction - Transaction name.
+     * @param {string} method - Method name.
      * @param {string[]} args - Transaction function arguments.
      *
-     * @return {Promise<string>} - Response or 200 OK if response is empty.
+     * @returns {Promise<string>} - Response or 200 OK if response is empty.
      */
-    private async queryInternal(channel: string, smartContract: string, transaction: string,
+    private async queryInternal(channel: string, smartContract: string, method: string,
                                 ...args: string[]): Promise<string> {
         const gateway: Gateway = new Gateway();
 
         try {
             const contract: Contract = await this.getContract(gateway, channel, smartContract);
-            const response: Buffer = (await contract.evaluateTransaction(transaction, ...args));
+            const response: Buffer = (await contract.evaluateTransaction(method, ...args));
 
             return parseResponse(response);
         } finally {
@@ -162,19 +164,19 @@ export class FabricChaincodeClient {
      *
      * @param {string} channel - Name to identify the channel.
      * @param {string} smartContract - Smart contract name.
-     * @param {string} transaction - Transaction name.
+     * @param {string} method - Method name.
      * @param {TransientMap} privateData - Object with String property names and Buffer property values.
      * @param {string[]} args - Transaction function arguments.
      *
-     * @return {Promise<string>} - Response or 200 OK if response is empty.
+     * @returns {Promise<string>} - Response or 200 OK if response is empty.
      */
-    private async querySecretInternal(channel: string, smartContract: string, transaction: string,
+    private async querySecretInternal(channel: string, smartContract: string, method: string,
                                       privateData: TransientMap, ...args: string[]): Promise<string> {
         const gateway: Gateway = new Gateway();
 
         try {
             const contract: Contract = await this.getContract(gateway, channel, smartContract);
-            const response: Buffer = await contract.createTransaction(transaction)
+            const response: Buffer = await contract.createTransaction(method)
                 .setTransient(privateData).submit(...args);
 
             return parseResponse(response);
@@ -190,18 +192,20 @@ export class FabricChaincodeClient {
      *
      * @param {string} channel - Name to identify the channel.
      * @param {string} smartContract - Smart contract name.
-     * @param {string} transaction - Transaction name.
+     * @param {string} method - Method name.
+     * @param {boolean} waitForCommit - Synchronous/asynchronous commit.
      * @param {string[]} args - Transaction function arguments.
      *
-     * @return {Promise<string>} - Response or 200 OK if response is empty.
+     * @returns {Promise<string>} - Response or 200 OK if response is empty.
      */
-    private async invokeInternal(channel: string, smartContract: string, transaction: string,
-                                 ...args: string[]): Promise<string> {
+    private async invokeInternal(channel: string, smartContract: string, method: string,
+                                 waitForCommit: boolean, ...args: string[]): Promise<string> {
         const gateway: Gateway = new Gateway();
 
         try {
-            const contract: Contract = await this.getContract(gateway, channel, smartContract);
-            const response: Buffer = await contract.submitTransaction(transaction, ...args);
+            const contract: Contract = await this.getContract(gateway,
+                channel, smartContract, waitForCommit);
+            const response: Buffer = await contract.submitTransaction(method, ...args);
 
             return parseResponse(response);
         } finally {
@@ -216,18 +220,18 @@ export class FabricChaincodeClient {
      *
      * @param {string} channel - Name to identify the channel.SS
      * @param {string} smartContract - Smart contract name.
-     * @param {string} transaction - Transaction name.
+     * @param {string} method - Method name.
      * @param {string[]} args - Transaction function arguments.
      *
-     * @return {Promise<string>} - Response or 200 OK if response is empty.
+     * @returns {Promise<string>} - Response or 200 OK if response is empty.
      */
-    public async query(channel: string, smartContract: string, transaction: string,
+    public async query(channel: string, smartContract: string, method: string,
                        ...args: string[]): Promise<string> {
         if (!this.wallet) {
             await this.prepareWallet();
         }
 
-        return await this.queryInternal(channel, smartContract, transaction, ...args);
+        return this.queryInternal(channel, smartContract, method, ...args);
     }
 
     /**
@@ -237,39 +241,79 @@ export class FabricChaincodeClient {
      *
      * @param {string} channel - Name to identify the channel.
      * @param {string} smartContract - Smart contract name.
-     * @param {string} transaction - Transaction name.
+     * @param {string} method - Method name.
      * @param {TransientMap} privateData - Object with String property names and Buffer property values.
      * @param {string[]} args - Transaction function arguments.
      *
-     * @return {Promise<string>} - Response or 200 OK if response is empty.
+     * @returns {Promise<string>} - Response or 200 OK if response is empty.
      */
-    public async querySecret(channel: string, smartContract: string, transaction: string, privateData: TransientMap,
+    public async querySecret(channel: string, smartContract: string, method: string, privateData: TransientMap,
                              ...args: string[]): Promise<string> {
         if (!this.wallet) {
             await this.prepareWallet();
         }
 
-        return await this.querySecretInternal(channel, smartContract, transaction, privateData, ...args);
+        return this.querySecretInternal(channel, smartContract, method, privateData, ...args);
     }
 
     /**
      * Creates a wallet if it does not exist and proceeds to invoke a chaincode.
-     *
-     * The invoke itself is a wrapper for the invokeInternal function. Arguments are forwarded.
+     * 
+     * This method is equivalent to `invokeSync`, it is just kept for the sake of compatibility.
      *
      * @param {string} channel - Name to identify the channel.
      * @param {string} smartContract - Smart contract name.
-     * @param {string} transaction - Transaction name.
+     * @param {string} method - Method name.
      * @param {string[]} args - Transaction function arguments.
      *
-     * @return {Promise<string>} - Response or 200 OK if response is empty.
+     * @returns {Promise<string>} - Response or 200 OK if response is empty.
      */
-    public async invoke(channel: string, smartContract: string, transaction: string,
+    public async invoke(channel: string, smartContract: string, method: string,
                         ...args: string[]): Promise<string> {
+        return this.invokeSync(channel, smartContract, method, ...args);
+    }
+
+    /**
+     * Creates a wallet if it does not exist and proceeds to invoke a chaincode synchronously.
+     * 
+     * The invokeSync itself is a wrapper for the invokeInternal function.
+     * Arguments are forwarded, setting the `waitForCommit` parameter to true.
+     * 
+     * @param {string} channel - Name to identify the channel.
+     * @param {string} smartContract - Smart contract name.
+     * @param {string} method - Method name.
+     * @param {string[]} args - Transaction function arguments.
+     * 
+     * @returns {Promise<string>} - Response or 200 if response is empty.
+     */
+    public async invokeSync(channel: string, smartContract: string, method: string,
+                            ...args: string[]): Promise<string> {
         if (!this.wallet) {
             await this.prepareWallet();
         }
 
-        return await this.invokeInternal(channel, smartContract, transaction, ...args);
+        return this.invokeInternal(channel, smartContract, method, true, ...args);
+    }
+
+    /**
+     * Creates a wallet if it does not exist and proceeeds to invoke a chaincode asynchronously.
+     * 
+     * The invokeAsync itself is a wrapper for the invokeInternal function.
+     * Arguments are forwarded, setting the `waitForCommit` parameter to true.
+     * 
+     * @param {string} channel - Name to identify the channel.
+     * @param {string} smartContract - Smart contract name.
+     * @param {string} method - Method name.
+     * @param {string[]} args - Transaction function arguments.
+     * 
+     * @returns {Promise<string>} - Response or 200 if response is empty.
+     */
+    public async invokeAsync(channel: string, smartContract: string, method: string,
+                             ...args: string[]): Promise<string> {
+        if (!this.wallet) {
+            await this.prepareWallet();
+        }
+
+        return this.invokeInternal(channel, smartContract, method, false, ...args);
     }
 }
