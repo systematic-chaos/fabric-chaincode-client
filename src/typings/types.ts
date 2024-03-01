@@ -9,7 +9,8 @@ interface ConfigOptions {
         enrollmentSecret: string
     },
     affiliation?: string,
-    roles?: string[]
+    roles?: string[],
+    asLocalhost?: boolean
 }
 
 interface NetworkConnectionProfile {
