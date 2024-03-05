@@ -5,8 +5,8 @@ interface ConfigOptions {
     ca: {
         host: string,
         port: string,
-        enrollmentId: string,
-        enrollmentSecret: string
+        signingCert: string,
+        privateKey: string
     },
     affiliation?: string,
     roles?: string[],

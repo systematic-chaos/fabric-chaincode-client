@@ -80,7 +80,7 @@ export class FabricChaincodeClient {
             identity: this.config.userName,
             discovery: {
                 enabled: true,
-                
+
                 // asLocalhost is set to true when this gateway is using a Fabric network deployed locally
                 asLocalhost: this.config.asLocalhost === true
             }

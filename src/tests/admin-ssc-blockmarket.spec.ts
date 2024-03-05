@@ -12,8 +12,8 @@ const clientConfig = {
     ca: {
         host: 'ica.ssc',
         port: '7054',
-        enrollmentId: 'jntIazdt68r8Uxl6',
-        enrollmentSecret: '0gDzEShIRsNBI2Fv'
+        signingCert: 'jntIazdt68r8Uxl6',
+        privateKey: '0gDzEShIRsNBI2Fv'
     }
 };
 
@@ -71,10 +71,12 @@ const networkConfig = {
     }
 };
 
+const walletPath = resolvePath(process.cwd(), 'wallet');
+
 describe('SSC without custom distinguished name attributes', () => {
 
     const fabricChaincodeClient = new FabricChaincodeClient(
-        clientConfig, networkConfig, resolvePath(process.cwd(), 'wallet'));
+        clientConfig, networkConfig, walletPath);
 
     describe('query', () => {
 
@@ -113,7 +115,8 @@ describe('SSC without custom distinguished name attributes', () => {
 
 describe('SSC with custom distinguished name attributes', () => {
 
-    const fabricChaincodeClient = new FabricChaincodeClient(clientConfig, networkConfig, 'C=SE,ST=Västerås,O=Katet-Corp');
+    const fabricChaincodeClient = new FabricChaincodeClient(
+        clientConfig, networkConfig, walletPath);
 
     describe('query', () => {
 

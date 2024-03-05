@@ -16,8 +16,8 @@ const clientConfig = {
     ca: {
         host: 'ica.retail',
         port: '7054',
-        enrollmentId: 'KZ3z07alYmTsnJVK',
-        enrollmentSecret: 'fDheOSz7iRUTmKmf'
+        signingCert: 'KZ3z07alYmTsnJVK',
+        privateKey: 'fDheOSz7iRUTmKmf'
     }
 };
 
@@ -75,6 +75,8 @@ const networkConfig = {
     }
 };
 
+const walletPath = resolvePath(process.cwd(), 'wallet');
+
 const baseTransaction = {
     location: {
         latitude: 0,
@@ -87,7 +89,7 @@ const baseTransaction = {
 describe('Retail without custom distinguished name attributes', () => {
 
     const fabricChaincodeClient = new FabricChaincodeClient(
-        clientConfig, networkConfig, resolvePath(process.cwd(), 'wallet'));
+        clientConfig, networkConfig, walletPath);
 
     describe('*** FSC ****************', () => {
 
@@ -784,7 +786,8 @@ describe('Retail without custom distinguished name attributes', () => {
 
 describe('Retail with custom distinguished name attributes', () => {
 
-    const fabricChaincodeClient = new FabricChaincodeClient(clientConfig, networkConfig, 'C=SE,ST=Västerås,O=Katet-Corp');
+    const fabricChaincodeClient = new FabricChaincodeClient(
+        clientConfig, networkConfig, walletPath);
 
     describe('*** FSC ****************', () => {
 

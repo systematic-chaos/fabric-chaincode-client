@@ -98,8 +98,8 @@ const registerAndEnrollUser = async (caClient: FabricCAServices, wallet: Wallet,
         } catch (error) {
             console.log(`The user ${confOpts.userName} may already be registered`);
             enrollment = {
-                certificate: confOpts.ca.enrollmentId,
-                key: confOpts.ca.enrollmentSecret
+                certificate: confOpts.ca.signingCert,
+                key: confOpts.ca.privateKey
             };
         }
 

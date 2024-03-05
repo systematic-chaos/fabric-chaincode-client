@@ -12,8 +12,8 @@ const clientConfig = {
     ca: {
         host: 'ica.aimplas-notifier',
         port: '7054',
-        enrollmentId: 'HIA8Dksn3BJ6WReg',
-        enrollmentSecret: 'KZjOhufv7iLlLrWI'
+        signingCert: 'HIA8Dksn3BJ6WReg',
+        privateKey: 'KZjOhufv7iLlLrWI'
     }
 };
 
@@ -176,10 +176,12 @@ const networkConfig = {
     }
 };
 
+const walletPath = resolvePath(process.cwd(), 'wallet');
+
 describe('without custom distinguished name attributes', () => {
 
     const fabricChaincodeClient = new FabricChaincodeClient(
-        clientConfig, networkConfig, resolvePath(process.cwd(), 'wallet'));
+        clientConfig, networkConfig, walletPath);
 
     describe('query', () => {
 
@@ -218,7 +220,8 @@ describe('without custom distinguished name attributes', () => {
 
 describe('with custom distinguished name attributes', () => {
 
-    const fabricChaincodeClient = new FabricChaincodeClient(clientConfig, networkConfig, 'C=SE,ST=Västerås,O=Katet-Corp');
+    const fabricChaincodeClient = new FabricChaincodeClient(
+        clientConfig, networkConfig, walletPath);
 
     describe('query', () => {
 
